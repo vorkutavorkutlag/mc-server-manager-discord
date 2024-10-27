@@ -23,16 +23,16 @@ class Messages(Enum):
 
 
 ErrorMessages: dict[(type(BaseException), str), str] = {
-    (IndexError, "setpath"): Messages.InvalidPathSyntax,
+    (IndexError, "setpath"): Messages.InvalidPathSyntax.value,
 
-    (IndexError, "setip"): Messages.InvalidIPSyntax,
+    (IndexError, "setip"): Messages.InvalidIPSyntax.value,
 
-    (AssertionError, "setpath"): Messages.PathAssertionError,
+    (AssertionError, "setpath"): Messages.PathAssertionError.value,
 
-    (AssertionError, "setip"): Messages.IPAssertionError,
+    (AssertionError, "setip"): Messages.IPAssertionError.value,
 
-    (PermissionError, "setpath"): Messages.ConfigPermissionError,
+    (PermissionError, "setpath"): Messages.ConfigPermissionError.value,
 
-    (PermissionError, "setip"): Messages.ConfigPermissionError,
+    (PermissionError, "setip"): Messages.ConfigPermissionError.value,
 
 }
