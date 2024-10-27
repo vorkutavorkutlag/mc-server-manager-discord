@@ -33,6 +33,6 @@ ErrorMessages: dict[(type(BaseException), str), str] = {
 
     (PermissionError, "setpath"): Messages.ConfigPermissionError,
 
-    (PermissionError, "setip"): Messages.PathAssertionError,
+    (PermissionError, "setip"): Messages.ConfigPermissionError,
 
 }

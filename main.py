@@ -85,7 +85,7 @@ def main():
 
         except Exception as e:
             try:
-                embed.add_field(name="Error!", value=ErrorMessages[e, "setip"])
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setip")].value)
             except KeyError:
                 embed.add_field(name="Error!", value=Messages.UnhandledException)
         finally:
@@ -111,7 +111,7 @@ def main():
 
         except Exception as e:
             try:
-                embed.add_field(name="Error!", value=ErrorMessages[e, "setip"])
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setip")].value)
             except KeyError:
                 embed.add_field(name="Error!", value=Messages.UnhandledException)
         finally:
