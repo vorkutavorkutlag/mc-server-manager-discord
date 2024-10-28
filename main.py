@@ -1,59 +1,30 @@
 import os
 import discord
-import dotenv
-import json
+import subprocess
+from dotenv import load_dotenv
 from discord.ext import commands, tasks
-from socket import inet_aton, inet_pton, AF_INET, error
+from mcstatus import JavaServer
+
 from messages import Messages, ErrorMessages
+from assistant_functions import is_valid_ipv4_address, get_ip, get_path, write_to_config
 
 
-def is_valid_ipv4_address(address: str) -> bool:
-    """
-    :param address: String of the address
-    :return: True if IP address is a valid IPV4, False otherwise
-    >>> is_valid_ipv4_address("127.0.0.1")
-    True
-    >>> is_valid_ipv4_address("IP")
-    False
-    """
-    try:
-        inet_pton(AF_INET, address)
-    except AttributeError:  # no inet_pton here, sorry
-        try:
-            inet_aton(address)
-        except error:
-            return False
-        return address.count('.') == 3
-    except error:  # not a valid address
-        return False
-    return True
-
-
-def handle_config(key: str, value: str) -> None:
-    """
-    Opens config.json and writes new data
-    :param key:  Any string key
-    :param value: Any string Value
-    >>> handle_config("ip_address", "127.0.0.1")
-    Will attempt to open config.json in local dir and write new key and value.
-    """
-    cfg_path: str = os.path.join(ROOT_DIR, "config.json")
-    with open(cfg_path, 'w+') as cfg:
-        try:
-            cfg_json: dict = json.load(cfg)
-        except json.decoder.JSONDecodeError:
-            cfg_json: dict = {}
-        cfg_json[key] = value
-        json.dump(cfg_json, cfg, indent=6)
 
 
 def main():
-    """
-    Initialize intents (options) and bot through a token in .env
-    """
+    """First, initialize intents (options) and bot through a token in .env"""
     intents: discord.Intents.default = discord.Intents.default()
     intents.message_content = True
     bot: discord.ext.commands.Bot = commands.Bot(command_prefix="mc!", intents=intents)
+
+    """Initializes config file"""
+    cfg_path: str = os.path.join(ROOT_DIR, "config.json")
+    if not os.path.exists(cfg_path) or not os.stat(cfg_path).st_size:
+        with open(cfg_path, 'w+') as cfg:
+            cfg.write("{}")
+    del cfg_path  # Free unneeded variable
+
+    # region BOT EVENTS AND COMMANDS
 
     @bot.event
     async def on_ready() -> None:
@@ -62,8 +33,6 @@ def main():
         :return:
         """
         print(f"{bot.user} Online")
-
-
 
     @bot.command(name="setpath")
     async def setpath(ctx, *args) -> None:
@@ -80,21 +49,21 @@ def main():
             path: str = args[0]
             assert os.path.isfile(path)
 
-            handle_config("jar_path", path)
-            embed.add_field(name="Success!", value=Messages.PathSaveSuccess)
+            write_to_config("jar_path", path)
+            embed.add_field(name="Success!", value=Messages.PathSaveSuccess.value)
 
         except Exception as e:
             try:
-                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setip")])
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setpath")])
             except KeyError:
-                embed.add_field(name="Error!", value=Messages.UnhandledException)
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
         finally:
             await ctx.channel.send(embed=embed)
 
     @bot.command(name="setip")
     async def setip(ctx, *args) -> None:
         """
-        Sets teh IP of the server.
+        Binds the IP of the server.
         :param ctx: Channel context
         :param args: Iterable of arguments, ideally of length 1 (single string)
         :return: Sends message in channel. Success / Failure
@@ -103,24 +72,72 @@ def main():
         embed: discord.Embed = discord.Embed()
 
         try:
-            ip_address: str = args[0]
+            ip_address: str = args[0].strip()
             assert is_valid_ipv4_address(ip_address)
 
-            handle_config("ip_address", ip_address)
-            embed.add_field(name="Success!", value=Messages.IPSaveSuccess)
+            write_to_config("ip_address", ip_address)
+            embed.add_field(name="Success!", value=Messages.IPSaveSuccess.value)
 
         except Exception as e:
             try:
                 embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setip")])
             except KeyError:
-                embed.add_field(name="Error!", value=Messages.UnhandledException)
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
         finally:
             await ctx.channel.send(embed=embed)
+
+    @bot.command(name="status")
+    async def get_status(ctx) -> None:
+        """
+        Sends the status of the server. Online / Offline, Players and Latency.
+        """
+        embed: discord.Embed = discord.Embed()
+
+        try:
+            server_ip: str = get_ip()
+            server: JavaServer = JavaServer.lookup(server_ip)
+            status: JavaServer.status = server.status()
+            embed.add_field(name="Success!", value=Messages.ServerStatus.value
+                        .format(status.players.online, status.latency))
+
+        except Exception as e:
+            try:
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "status")])
+            except KeyError:
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
+        finally:
+            await ctx.channel.send(embed=embed)
+
+    @bot.command(name="launch")
+    async def launch(ctx, *args) -> None:
+        """
+        Opens the specified server jar file with launch arguments.
+        """
+        embed: discord.Embed = discord.Embed()
+        try:
+            jar_path: str = get_path()
+
+        except Exception as e:
+            try:
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "launch")])
+            except KeyError:
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
+        finally:
+            await ctx.channel.send(embed=embed)
+
+    # endregion
+
+    """Now, after declaring all of the bot's events and commands, we can run it"""
 
     bot.run(os.getenv("DISCORD_SECRET"))
 
 
+
+
 if __name__ == "__main__":
-    dotenv.load_dotenv()
     ROOT_DIR: str = os.path.abspath(os.path.dirname(__file__))
+    load_dotenv()  # Load .env file in order to extract discord secret
     main()
