@@ -1,3 +1,4 @@
+import json
 import os
 import discord
 import subprocess
@@ -5,10 +6,11 @@ from dotenv import load_dotenv
 from discord.ext import commands, tasks
 from mcstatus import JavaServer
 
-from messages import Messages, ErrorMessages
-from assistant_functions import is_valid_ipv4_address, get_ip, get_path, write_to_config
+from constants import Messages, ErrorMessages
+from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config
 
-
+"""Initialize server process variable for subsequent uses"""
+server_proc: (subprocess.Popen, None) = None
 
 
 def main():
@@ -22,10 +24,8 @@ def main():
     if not os.path.exists(cfg_path) or not os.stat(cfg_path).st_size:
         with open(cfg_path, 'w+') as cfg:
             cfg.write("{}")
-    del cfg_path  # Free unneeded variable
 
     # region BOT EVENTS AND COMMANDS
-
     @bot.event
     async def on_ready() -> None:
         """
@@ -35,7 +35,7 @@ def main():
         print(f"{bot.user} Online")
 
     @bot.command(name="setpath")
-    async def setpath(ctx, *args) -> None:
+    async def setpath(ctx: discord.ext.commands.context.Context, *args: str) -> None:
         """
         Sets the path to the server executable.
         :param ctx: Channel context
@@ -61,7 +61,7 @@ def main():
             await ctx.channel.send(embed=embed)
 
     @bot.command(name="setip")
-    async def setip(ctx, *args) -> None:
+    async def setip(ctx: discord.ext.commands.context.Context, *args: str) -> None:
         """
         Binds the IP of the server.
         :param ctx: Channel context
@@ -87,8 +87,35 @@ def main():
         finally:
             await ctx.channel.send(embed=embed)
 
+    @bot.command(name="setmem")
+    async def set_mem(ctx: discord.ext.commands.context.Context, *args: str) -> None:
+        embed: discord.Embed = discord.Embed()
+        try:
+            assert args and args[0].isdigit()
+            write_to_config("mem_alloc", args[0])
+
+            embed.add_field(name="Success", value=Messages.SetMemSuccess.value)
+
+        except Exception as e:
+            try:
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "setmem")])
+            except KeyError:
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
+        finally:
+            await ctx.channel.send(embed=embed)
+
+    @bot.command(name="showconfig")
+    async def show_config(ctx: discord.ext.commands.context.Context):
+        embed: discord.Embed = discord.Embed()
+        with open(cfg_path, 'r') as cfg:
+            cfg_json: dict = json.load(cfg)
+        config_dump: str = json.dumps(cfg_json, indent=4)
+        embed.add_field(name="Config", value=config_dump)
+        await ctx.channel.send(embed=embed)
+
     @bot.command(name="status")
-    async def get_status(ctx) -> None:
+    async def get_status(ctx: discord.ext.commands.context.Context) -> None:
         """
         Sends the status of the server. Online / Offline, Players and Latency.
         """
@@ -99,7 +126,7 @@ def main():
             server: JavaServer = JavaServer.lookup(server_ip)
             status: JavaServer.status = server.status()
             embed.add_field(name="Success!", value=Messages.ServerStatus.value
-                        .format(status.players.online, status.latency))
+                            .format(status.players.online, status.latency))
 
         except Exception as e:
             try:
@@ -111,13 +138,27 @@ def main():
             await ctx.channel.send(embed=embed)
 
     @bot.command(name="launch")
-    async def launch(ctx, *args) -> None:
+    async def launch(ctx: discord.ext.commands.context.Context, *args: str) -> None:
         """
-        Opens the specified server jar file with launch arguments.
+        Opens the specified server jar file with launch arguments if it is not running.
+        Otherwise, sends error message and does nothing.
         """
         embed: discord.Embed = discord.Embed()
+        global server_proc
+
         try:
+            # memory allocation for the server. allows user to give custom memory, though the default is 1024mb.
+            default_mem: int = get_mem()
+            mem_alloc = args[0] if args and args[0].isdigit() else default_mem
+            # poll() returns None or exit code. None if still running, an exit code if finished.
+            # by this assertion, we check that the process is not running before attempting to run it.
+            assert not isinstance(server_proc, subprocess.Popen) is None or server_proc.poll() is not None
             jar_path: str = get_path()
+            server_dir: str = os.path.abspath(os.path.dirname(jar_path))
+            args: list[str] = ["java", f"-Xmx{mem_alloc}M", f"-Xms{mem_alloc}M", "-jar", jar_path]
+            server_proc = subprocess.Popen(args, cwd=server_dir, stdin=subprocess.PIPE)
+
+            embed.add_field(name="Success", value=Messages.LaunchSuccess.value)
 
         except Exception as e:
             try:
@@ -128,13 +169,35 @@ def main():
         finally:
             await ctx.channel.send(embed=embed)
 
+    @bot.command(name="close")
+    async def shut_server_down(ctx: discord.ext.commands.context.Context):
+        embed: discord.Embed = discord.Embed()
+        global server_proc
+
+
+        try:
+            # by this assertion, we check that the process is running before attempting to close it.
+            assert isinstance(server_proc, subprocess.Popen) and server_proc.poll() is None
+            server_proc.stdin.write(b'stop\n')
+            server_proc = None
+
+            embed.add_field(name="Success", value=Messages.CloseSuccess.value)
+
+        except Exception as e:
+            try:
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "close")])
+            except KeyError:
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
+        finally:
+            await ctx.channel.send(embed=embed)
+
+
     # endregion
 
-    """Now, after declaring all of the bot's events and commands, we can run it"""
+    """Now, after declaring all the bot's events and commands, we can run it"""
 
     bot.run(os.getenv("DISCORD_SECRET"))
-
-
 
 
 if __name__ == "__main__":

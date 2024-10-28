@@ -44,10 +44,10 @@ def get_ip() -> str:
 
 def get_path() -> str:
     """
-        Returns the jar path bound by the user. Throws exception if unbound.
-        >>> get_path()
-        C:\\Users\\user\\server\\minecraft_server.jar
-        """
+    Returns the jar path bound by the user. Throws exception if unbound.
+    >>> get_path()
+    C:\\Users\\user\\server\\minecraft_server.jar
+    """
     cfg_path: str = os.path.join(ROOT_DIR, "config.json")
     with open(cfg_path, 'r') as cfg:
         try:
@@ -55,6 +55,20 @@ def get_path() -> str:
             return cfg_json["jar_path"]
         except (json.decoder.JSONDecodeError, KeyError):
             raise KeyError("Jar path not bound. See mc!help")
+
+
+def get_mem() -> int:
+    """
+    Returns default memory from config. If absent, returns 1024.
+    :return:
+    """
+    cfg_path: str = os.path.join(ROOT_DIR, "config.json")
+    with open(cfg_path, 'r') as cfg:
+        try:
+            cfg_json: dict = json.load(cfg)
+            return int(cfg_json["mem_alloc"])
+        except (json.decoder.JSONDecodeError, KeyError):
+            return 1024
 
 
 def write_to_config(key: str, value: str) -> None:

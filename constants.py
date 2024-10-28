@@ -8,9 +8,9 @@ class Messages(Enum):
     InvalidIPSyntax: str =       "Invalid syntax. Example: " \
                                  "mc!setip 127.0.0.1"
 
-    PathAssertionError: str =    "Provided path does not exist."
+    PathAssertionError: str =    "Provided path does not exist. mc!help"
 
-    IPAssertionError: str =      "Invalid IP address. Example : 127.0.0.1"
+    IPAssertionError: str =      "Invalid IP address. Example : 127.0.0.1 mc!help"
 
     ConfigPermissionError: str = "Permission error: Couldn't create/write to config file." \
                                  "Try Launching in Administrator Mode or with more privileges."
@@ -19,7 +19,7 @@ class Messages(Enum):
 
     PathSaveSuccess: str =       "Path is successfully saved."
 
-    UnhandledException: str =    "Unhandled error has occurred."
+    UnhandledException: str =    "Unhandled error has occurred. mc!help "
 
     ServerStatus: str =          "Server is Online, has {} player(s) and replied in {} ms."
 
@@ -28,6 +28,18 @@ class Messages(Enum):
     IPNotBound =                 "IP Address not bound. See mc!help"
 
     PathNotBound =               "Jar path not bound. See mc!help"
+
+    ProcessStillRunning =        "Close the server before trying to open it again! mc!help"
+
+    LaunchSuccess =              "Server launched successfully."
+
+    SetMemDigitAssertion =       "Argument must be a digit! Example: mc!setmem 1024 ... mc!help"
+
+    SetMemSuccess =              "Successfully updated default memory."
+
+    CloseSuccess =               "Successfully closed down server."
+
+    CloseAssertionError =        "Server is already closed. mc!help"
 
 
 ErrorMessages: dict[(type(BaseException), str), str] = {
@@ -41,5 +53,10 @@ ErrorMessages: dict[(type(BaseException), str), str] = {
     (TimeoutError, "status"): Messages.StatusConnectionError.value,
     (KeyError, "status"): Messages.IPNotBound.value,
     (KeyError, "launch"): Messages.PathNotBound.value,
+    (AssertionError, "launch"): Messages.ProcessStillRunning.value,
+    (AssertionError, "setmem"): Messages.SetMemDigitAssertion.value,
+    (AssertionError, "close"):  Messages.CloseAssertionError.value,
+
+
 }
 
