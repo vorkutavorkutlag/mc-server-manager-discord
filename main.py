@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from discord.ext import commands, tasks
 from mcstatus import JavaServer
 from sys import builtin_module_names
+from time import time
 
 from constants import Messages, ErrorMessages
 from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_read
@@ -33,6 +34,7 @@ def main():
         """
         print(f"{bot.user} Online")
         server_feedback.start()
+        empty_server_timeout.start()
 
     @bot.command(name="setpath")
     async def setpath(ctx: discord.ext.commands.context.Context, *args: str) -> None:
@@ -143,7 +145,7 @@ def main():
         Opens the specified server jar file with launch arguments if it is not running.
         Otherwise, sends error message and does nothing.
         """
-        global server_proc, server_proc_running, feedback_channel_id
+        global server_proc, server_proc_running, feedback_channel_id, latest_server_launch
         ON_POSIX: bool = 'posix' in builtin_module_names
         embed: discord.Embed = discord.Embed()
 
@@ -169,8 +171,11 @@ def main():
             for _ in range(8):
                 server_proc.stdout.readline()
 
+            # The channel from which the server was launched will be the channel to receive the feedback
             feedback_channel_id = ctx.channel.id
-            server_proc_running = True
+            server_proc_running = True  # Declare that the server is running
+            latest_server_launch = time()  # update latest launch time
+
             embed.add_field(name="Success", value=Messages.LaunchSuccess.value)
 
         except Exception as e:
@@ -213,6 +218,11 @@ def main():
 
     @bot.command(name="command")
     async def command(ctx: discord.ext.commands.context.Context, *args):
+        """
+        Sends user args to server process' stdin, resulting in an execution of a minecraft command
+        :param ctx: Channel in which the command was sent
+        :param args: arguments for the minecraft command. does not verify if valid, minecraft does so by itself
+        """
         global server_proc, server_proc_running
         embed: discord.Embed = discord.Embed()
 
@@ -237,17 +247,49 @@ def main():
 
     @tasks.loop(seconds=1)
     async def server_feedback():
+        """
+        Prints server process' stdout in chat. This may include command results, players chatting, achievements, etc.
+        """
         global server_proc, server_proc_running, feedback_channel_id
         if not server_proc_running:
             return
         # If server is running, server_proc is of type subprocess.Popen
-        ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
         proc_stdout: str = proc_read(server_proc)
+        # Checking if readline returned anything
         if not proc_stdout:
             return
-        # Checking if readline returned anything
+        ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
         await ctx_channel.send(proc_stdout)
 
+    @tasks.loop(minutes=7)
+    async def empty_server_timeout():
+        """
+        While we have mc!close, we can't always trust our friends to remember to close the server.
+        Pings the server for status (Could be extracted locally but that's a stdout headache)
+        :return:
+        """
+        global feedback_channel_id, server_proc_running, latest_server_launch
+        FIVE_MINUTES: int = 60 * 5
+        if not server_proc_running:
+            return
+
+        try:
+            server_ip: str = get_ip()
+            server: JavaServer = JavaServer.lookup(server_ip)
+            status: JavaServer.status = server.status()
+        except (TimeoutError, ConnectionRefusedError, KeyError):
+            return
+
+        delta_time: float = time() - latest_server_launch
+        # If no players online and five minutes passed since launch, shut down.
+        if status.players.online or delta_time < FIVE_MINUTES:
+            return
+
+        embed: discord.Embed = discord.Embed()
+        embed.add_field(name="Timeout", value=Messages.InactivityTimeout.value)
+        ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
+        await ctx_channel.send(embed=embed)
+        await shut_server_down()
 
     # endregion
 
@@ -264,7 +306,8 @@ if __name__ == "__main__":
     server_proc: (subprocess.Popen, None) = None
     server_proc_running: bool = False
 
-    feedback_channel_id: str = ""
+    feedback_channel_id: int = 0
+    latest_server_launch: float = time()
 
     load_dotenv()  # Load .env file in order to extract discord secret
     main()

@@ -45,6 +45,8 @@ class Messages(Enum):
 
     CommandSyntaxError =         "Invalid command syntax."
 
+    InactivityTimeout =          "Due to lack of activity on the server, it will automatically close."
+
 
 ErrorMessages: dict[(type(BaseException), str), str] = {
     (IndexError, "setpath"): Messages.InvalidPathSyntax.value,
