@@ -2,17 +2,14 @@ import json
 import os
 import discord
 import subprocess
+
 from dotenv import load_dotenv
 from discord.ext import commands, tasks
 from mcstatus import JavaServer
-
 from sys import builtin_module_names
 
 from constants import Messages, ErrorMessages
-from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_readall
-
-"""Initialize server process variable for subsequent uses"""
-server_proc: (subprocess.Popen, None) = None
+from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_read
 
 
 def main():
@@ -31,10 +28,11 @@ def main():
     @bot.event
     async def on_ready() -> None:
         """
-        Console print whenever bot is ready
+        Console print whenever bot is ready and start server feed loop.
         :return:
         """
         print(f"{bot.user} Online")
+        server_feedback.start()
 
     @bot.command(name="setpath")
     async def setpath(ctx: discord.ext.commands.context.Context, *args: str) -> None:
@@ -145,7 +143,7 @@ def main():
         Opens the specified server jar file with launch arguments if it is not running.
         Otherwise, sends error message and does nothing.
         """
-        global server_proc
+        global server_proc, server_proc_running, feedback_channel_id
         ON_POSIX: bool = 'posix' in builtin_module_names
         embed: discord.Embed = discord.Embed()
 
@@ -154,17 +152,25 @@ def main():
             default_mem: int = get_mem()
             mem_alloc = args[0] if args and args[0].isdigit() else default_mem
             # poll() returns None or exit code. None if still running, an exit code if finished.
+
             # by this assertion, we check that the process is not running before attempting to run it.
-            assert not isinstance(server_proc, subprocess.Popen) is None or server_proc.poll() is not None
+            assert not server_proc_running
             jar_path: str = get_path()
             server_dir: str = os.path.abspath(os.path.dirname(jar_path))
             args: list[str] = ["java", f"-Xmx{mem_alloc}M", f"-Xms{mem_alloc}M", "-jar", jar_path]
-            server_proc = subprocess.Popen(args, cwd=server_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=ON_POSIX)
+            # start a popen subprocess, meaning we are able to manipulate it later on
+            server_proc = subprocess.Popen(args,
+                                           cwd=server_dir,
+                                           stdin=subprocess.PIPE,
+                                           stdout=subprocess.PIPE,
+                                           close_fds=ON_POSIX)
 
             # To get rid of the first few messages, we read them upon launch
             for _ in range(8):
                 server_proc.stdout.readline()
 
+            feedback_channel_id = ctx.channel.id
+            server_proc_running = True
             embed.add_field(name="Success", value=Messages.LaunchSuccess.value)
 
         except Exception as e:
@@ -182,16 +188,17 @@ def main():
         Closes the server process from the jar if it is running.
         Otherwise, sends error message and does nothing.
         """
-        global server_proc
+        global server_proc, server_proc_running
         embed: discord.Embed = discord.Embed()
 
 
         try:
             # by this assertion, we check that the process is running before attempting to close it.
-            assert isinstance(server_proc, subprocess.Popen) and server_proc.poll() is None
+            assert server_proc_running
             server_proc.stdin.write(b'stop\n')
             server_proc = None
 
+            server_proc_running = False
             embed.add_field(name="Success", value=Messages.CloseSuccess.value)
 
         except Exception as e:
@@ -206,12 +213,12 @@ def main():
 
     @bot.command(name="command")
     async def command(ctx: discord.ext.commands.context.Context, *args):
-        global server_proc
+        global server_proc, server_proc_running
         embed: discord.Embed = discord.Embed()
 
         try:
             # by this assertion, we check that the process is running before attempting to close it.
-            assert isinstance(server_proc, subprocess.Popen) and server_proc.poll() is None
+            assert server_proc_running
             if not args:
                 raise SyntaxError
             mc_command: str = " ".join(args)
@@ -219,29 +226,45 @@ def main():
             server_proc.stdin.write(mc_command)
             server_proc.stdin.flush()
 
-
-            output = proc_readall(proc=server_proc)
-
-            embed.add_field(name="Server Dialogue", value=output)
-
         except Exception as e:
             try:
                 embed.add_field(name="Error!", value=ErrorMessages[(type(e), "command")])
             except KeyError:
                 embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+            # rare indented finally - we do not want to send anything if everything goes right.
+            finally:
+                await ctx.channel.send(embed=embed)
 
-        finally:
-            await ctx.channel.send(embed=embed)
+    @tasks.loop(seconds=1)
+    async def server_feedback():
+        global server_proc, server_proc_running, feedback_channel_id
+        if not server_proc_running:
+            return
+        # If server is running, server_proc is of type subprocess.Popen
+        ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
+        proc_stdout: str = proc_read(server_proc)
+        if not proc_stdout:
+            return
+        # Checking if readline returned anything
+        await ctx_channel.send(proc_stdout)
 
 
     # endregion
 
     """Now, after declaring all the bot's events and commands, we can run it"""
 
+
     bot.run(os.getenv("DISCORD_SECRET"))
 
 
 if __name__ == "__main__":
     ROOT_DIR: str = os.path.abspath(os.path.dirname(__file__))
+
+    """Initialize server process variable for subsequent uses"""
+    server_proc: (subprocess.Popen, None) = None
+    server_proc_running: bool = False
+
+    feedback_channel_id: str = ""
+
     load_dotenv()  # Load .env file in order to extract discord secret
     main()

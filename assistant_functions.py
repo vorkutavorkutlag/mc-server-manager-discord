@@ -3,9 +3,10 @@ import os
 import subprocess
 from socket import inet_aton, inet_pton, AF_INET, error
 from queue import Queue, Empty
-from threading import Thread, Event
+from threading import Thread
 
 ROOT_DIR: str = os.path.abspath(os.path.dirname(__file__))
+_stdout_read_queue: Queue = Queue()
 
 
 def is_valid_ipv4_address(address: str) -> bool:
@@ -93,34 +94,32 @@ def write_to_config(key: str, value: str) -> None:
         json.dump(cfg_json, cfg, indent=6)
 
 
-
-def proc_readall(proc: subprocess.Popen) -> str:
+def proc_read(proc: subprocess.Popen) -> str:
     """
-    Using a queue and a thread, we create a non-blocking stdout.readline(). Read until dry.
+     a non-blocking stdout.readline()
     :param proc: Any subprocess Popen with a stdout attribute.
-    :return: String of all the lines printed.
-    >>> proc_readall(proc)
-    "Seed: 214890214080412 \n vorkuta_: Hello!"
+    :return: None. Sends message to context channel.
+    >>> proc_read(proc)
+    "Seed: 214890214080412 \n"
     """
-    # timeout border in seconds
-    TIMEOUT: float = 1.0
 
     def enqueue_output(out, queue):
-        for line in iter(out.readline, b''):
-            if finish_event.is_set():
-                return
-            queue.put(line)
-        out.close()
-
-    output: str = ""
-    stdout_read_queue: Queue = Queue()
-    stdout_read_thread: Thread = Thread(target=enqueue_output, args=(proc.stdout, stdout_read_queue))
-    stdout_read_thread.start()
-    finish_event: Event = Event()
-
-    while True:
         try:
-            batch: bytes = stdout_read_queue.get(timeout=TIMEOUT)
-            output += batch.decode().strip() + "\n"
-        except Empty:
-            return output
+            for line in iter(out.readline, b''):
+                queue.put(line)
+            out.close()
+        # ValueError indicates there is nothing to read from, ie server closed
+        except ValueError:
+            return
+
+    stdout_read_thread = Thread(target=enqueue_output, args=(proc.stdout, _stdout_read_queue))
+    stdout_read_thread.daemon = True  # thread dies with the program
+    stdout_read_thread.start()
+
+    # read line without blocking
+    try:
+        output = _stdout_read_queue.get_nowait()  # q.get(timeout=.1) also works
+    except Empty:
+        return ""
+    else:
+        return output.decode().strip() + "\n"
