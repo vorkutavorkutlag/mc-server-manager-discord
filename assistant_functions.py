@@ -1,6 +1,9 @@
 import json
 import os
+import subprocess
 from socket import inet_aton, inet_pton, AF_INET, error
+from queue import Queue, Empty
+from threading import Thread, Event
 
 ROOT_DIR: str = os.path.abspath(os.path.dirname(__file__))
 
@@ -88,3 +91,36 @@ def write_to_config(key: str, value: str) -> None:
         cfg_json[key] = value
     with open(cfg_path, 'w') as cfg:
         json.dump(cfg_json, cfg, indent=6)
+
+
+
+def proc_readall(proc: subprocess.Popen) -> str:
+    """
+    Using a queue and a thread, we create a non-blocking stdout.readline(). Read until dry.
+    :param proc: Any subprocess Popen with a stdout attribute.
+    :return: String of all the lines printed.
+    >>> proc_readall(proc)
+    "Seed: 214890214080412 \n vorkuta_: Hello!"
+    """
+    # timeout border in seconds
+    TIMEOUT: float = 1.0
+
+    def enqueue_output(out, queue):
+        for line in iter(out.readline, b''):
+            if finish_event.is_set():
+                return
+            queue.put(line)
+        out.close()
+
+    output: str = ""
+    stdout_read_queue: Queue = Queue()
+    stdout_read_thread: Thread = Thread(target=enqueue_output, args=(proc.stdout, stdout_read_queue))
+    stdout_read_thread.start()
+    finish_event: Event = Event()
+
+    while True:
+        try:
+            batch: bytes = stdout_read_queue.get(timeout=TIMEOUT)
+            output += batch.decode().strip() + "\n"
+        except Empty:
+            return output

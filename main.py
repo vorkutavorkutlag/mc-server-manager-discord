@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 from discord.ext import commands, tasks
 from mcstatus import JavaServer
 
+from sys import builtin_module_names
+
 from constants import Messages, ErrorMessages
-from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config
+from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_readall
 
 """Initialize server process variable for subsequent uses"""
 server_proc: (subprocess.Popen, None) = None
@@ -143,8 +145,9 @@ def main():
         Opens the specified server jar file with launch arguments if it is not running.
         Otherwise, sends error message and does nothing.
         """
-        embed: discord.Embed = discord.Embed()
         global server_proc
+        ON_POSIX: bool = 'posix' in builtin_module_names
+        embed: discord.Embed = discord.Embed()
 
         try:
             # memory allocation for the server. allows user to give custom memory, though the default is 1024mb.
@@ -156,7 +159,11 @@ def main():
             jar_path: str = get_path()
             server_dir: str = os.path.abspath(os.path.dirname(jar_path))
             args: list[str] = ["java", f"-Xmx{mem_alloc}M", f"-Xms{mem_alloc}M", "-jar", jar_path]
-            server_proc = subprocess.Popen(args, cwd=server_dir, stdin=subprocess.PIPE)
+            server_proc = subprocess.Popen(args, cwd=server_dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=ON_POSIX)
+
+            # To get rid of the first few messages, we read them upon launch
+            for _ in range(8):
+                server_proc.stdout.readline()
 
             embed.add_field(name="Success", value=Messages.LaunchSuccess.value)
 
@@ -171,8 +178,12 @@ def main():
 
     @bot.command(name="close")
     async def shut_server_down(ctx: discord.ext.commands.context.Context):
-        embed: discord.Embed = discord.Embed()
+        """
+        Closes the server process from the jar if it is running.
+        Otherwise, sends error message and does nothing.
+        """
         global server_proc
+        embed: discord.Embed = discord.Embed()
 
 
         try:
@@ -186,6 +197,36 @@ def main():
         except Exception as e:
             try:
                 embed.add_field(name="Error!", value=ErrorMessages[(type(e), "close")])
+            except KeyError:
+                embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
+
+        finally:
+            await ctx.channel.send(embed=embed)
+
+
+    @bot.command(name="command")
+    async def command(ctx: discord.ext.commands.context.Context, *args):
+        global server_proc
+        embed: discord.Embed = discord.Embed()
+
+        try:
+            # by this assertion, we check that the process is running before attempting to close it.
+            assert isinstance(server_proc, subprocess.Popen) and server_proc.poll() is None
+            if not args:
+                raise SyntaxError
+            mc_command: str = " ".join(args)
+            mc_command: bytes = mc_command.encode() + b'\n'
+            server_proc.stdin.write(mc_command)
+            server_proc.stdin.flush()
+
+
+            output = proc_readall(proc=server_proc)
+
+            embed.add_field(name="Server Dialogue", value=output)
+
+        except Exception as e:
+            try:
+                embed.add_field(name="Error!", value=ErrorMessages[(type(e), "command")])
             except KeyError:
                 embed.add_field(name="Error!", value=Messages.UnhandledException.value + repr(e))
 

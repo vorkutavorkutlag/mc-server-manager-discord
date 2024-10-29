@@ -41,6 +41,10 @@ class Messages(Enum):
 
     CloseAssertionError =        "Server is already closed. mc!help"
 
+    CommandAssertionError =      "Server is not running yet. mc!launch"
+
+    CommandSyntaxError =         "Invalid command syntax."
+
 
 ErrorMessages: dict[(type(BaseException), str), str] = {
     (IndexError, "setpath"): Messages.InvalidPathSyntax.value,
@@ -56,7 +60,8 @@ ErrorMessages: dict[(type(BaseException), str), str] = {
     (AssertionError, "launch"): Messages.ProcessStillRunning.value,
     (AssertionError, "setmem"): Messages.SetMemDigitAssertion.value,
     (AssertionError, "close"):  Messages.CloseAssertionError.value,
-
+    (AssertionError, "command"): Messages.CommandAssertionError.value,
+    (SyntaxError, "command"): Messages.CommandSyntaxError.value
 
 }
 
