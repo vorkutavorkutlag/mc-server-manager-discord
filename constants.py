@@ -1,6 +1,14 @@
 from enum import Enum
 
 
+class JavaArgs(Enum):
+    Java =                       "java"
+    MaxMem =                     "-Xmx{}M"
+    MinMem =                     "-Xms{}M"
+    Jar =                        "-jar"
+    Server  =                    "-server"
+
+
 class Messages(Enum):
     InvalidPathSyntax: str =     "Invalid syntax. Example: " \
                                  "mc!setpath C:\\Users\\User\\Server\\minecraft_server.jar",
@@ -31,7 +39,7 @@ class Messages(Enum):
 
     ProcessStillRunning =        "Close the server before trying to open it again! mc!help"
 
-    LaunchSuccess =              "Server launched successfully."
+    LaunchSuccess =              "Server will launch shortly."
 
     SetMemDigitAssertion =       "Argument must be a digit! Example: mc!setmem 1024 ... mc!help"
 
@@ -58,7 +66,7 @@ ErrorMessages: dict[(type(BaseException), str), str] = {
     (ConnectionRefusedError, "status"): Messages.StatusConnectionError.value,
     (TimeoutError, "status"): Messages.StatusConnectionError.value,
     (KeyError, "status"): Messages.IPNotBound.value,
-    (KeyError, "launch"): Messages.PathNotBound.value,
+    (KeyError, "launch"): " OR ".join((Messages.PathNotBound.value, Messages.IPNotBound.value)),
     (AssertionError, "launch"): Messages.ProcessStillRunning.value,
     (AssertionError, "setmem"): Messages.SetMemDigitAssertion.value,
     (AssertionError, "close"):  Messages.CloseAssertionError.value,

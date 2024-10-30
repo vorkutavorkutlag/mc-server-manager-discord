@@ -9,7 +9,7 @@ from mcstatus import JavaServer
 from sys import builtin_module_names
 from time import time
 
-from constants import Messages, ErrorMessages
+from constants import Messages, ErrorMessages, JavaArgs
 from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_read
 
 
@@ -150,6 +150,9 @@ def main():
         embed: discord.Embed = discord.Embed()
 
         try:
+            # To ensure user has set the ip, we attempt to retrieve it
+            _ = get_ip()
+
             # memory allocation for the server. allows user to give custom memory, though the default is 1024mb.
             default_mem: int = get_mem()
             mem_alloc = args[0] if args and args[0].isdigit() else default_mem
@@ -159,17 +162,20 @@ def main():
             assert not server_proc_running
             jar_path: str = get_path()
             server_dir: str = os.path.abspath(os.path.dirname(jar_path))
-            args: list[str] = ["java", f"-Xmx{mem_alloc}M", f"-Xms{mem_alloc}M", "-jar", jar_path]
+            # declare default arguments for launch, like ignoring fml query for modded
+            args: list[str] = [JavaArgs.Java.value,
+                               JavaArgs.MaxMem.value.format(mem_alloc),
+                               JavaArgs.MinMem.value.format(mem_alloc),
+                               JavaArgs.Jar.value,
+                               JavaArgs.Server.value,
+                               jar_path]
+            print("Launch args: ", args)
             # start a popen subprocess, meaning we are able to manipulate it later on
             server_proc = subprocess.Popen(args,
                                            cwd=server_dir,
                                            stdin=subprocess.PIPE,
                                            stdout=subprocess.PIPE,
                                            close_fds=ON_POSIX)
-
-            # To get rid of the first few messages, we read them upon launch
-            for _ in range(8):
-                server_proc.stdout.readline()
 
             # The channel from which the server was launched will be the channel to receive the feedback
             feedback_channel_id = ctx.channel.id
@@ -250,18 +256,27 @@ def main():
         """
         Prints server process' stdout in chat. This may include command results, players chatting, achievements, etc.
         """
-        global server_proc, server_proc_running, feedback_channel_id
+        global server_proc, server_proc_running, feedback_channel_id, latest_server_launch
         if not server_proc_running:
             return
         # If server is running, server_proc is of type subprocess.Popen
+
+        FIVE_MINUTES: float = 60 * 5
+        delta_time: float = time() - latest_server_launch
+        if delta_time < FIVE_MINUTES:
+            return
+        # We don't want to send anything for the first ten minute as the server is launching to not overload the chat.
+
+        # Checking if readline returned anything:
         proc_stdout: str = proc_read(server_proc)
-        # Checking if readline returned anything
         if not proc_stdout:
             return
+
+        print(proc_stdout)
         ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
         await ctx_channel.send(proc_stdout)
 
-    @tasks.loop(minutes=7)
+    @tasks.loop(minutes=5)
     async def empty_server_timeout():
         """
         While we have mc!close, we can't always trust our friends to remember to close the server.
@@ -269,7 +284,7 @@ def main():
         :return:
         """
         global feedback_channel_id, server_proc_running, latest_server_launch
-        FIVE_MINUTES: int = 60 * 5
+        TWENTY_MINUTES: float = 60 * 20
         if not server_proc_running:
             return
 
@@ -281,8 +296,8 @@ def main():
             return
 
         delta_time: float = time() - latest_server_launch
-        # If no players online and five minutes passed since launch, shut down.
-        if status.players.online or delta_time < FIVE_MINUTES:
+        # If no players online and twenty minutes passed since launch, shut down.
+        if status.players.online or delta_time < TWENTY_MINUTES:
             return
 
         embed: discord.Embed = discord.Embed()
