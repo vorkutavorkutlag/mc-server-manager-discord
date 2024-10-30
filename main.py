@@ -251,7 +251,7 @@ def main():
             finally:
                 await ctx.channel.send(embed=embed)
 
-    @tasks.loop(seconds=1)
+    @tasks.loop(seconds=.5)
     async def server_feedback():
         """
         Prints server process' stdout in chat. This may include command results, players chatting, achievements, etc.
@@ -261,9 +261,9 @@ def main():
             return
         # If server is running, server_proc is of type subprocess.Popen
 
-        FIVE_MINUTES: float = 60 * 5
+        TEN_MINUTES: float = 60 * 10
         delta_time: float = time() - latest_server_launch
-        if delta_time < FIVE_MINUTES:
+        if delta_time < TEN_MINUTES:
             return
         # We don't want to send anything for the first ten minute as the server is launching to not overload the chat.
 

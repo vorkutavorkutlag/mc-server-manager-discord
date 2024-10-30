@@ -122,4 +122,7 @@ def proc_read(proc: subprocess.Popen) -> str:
     except Empty:
         return ""
     else:
-        return output.decode().strip() + "\n"
+        try:
+            return output.decode().strip() + "\n"
+        except UnicodeDecodeError:
+            return ""

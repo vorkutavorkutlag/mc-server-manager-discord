@@ -6,7 +6,7 @@ class JavaArgs(Enum):
     MaxMem =                     "-Xmx{}M"
     MinMem =                     "-Xms{}M"
     Jar =                        "-jar"
-    Server  =                    "-server"
+    Server =                     "-server"
 
 
 class Messages(Enum):
