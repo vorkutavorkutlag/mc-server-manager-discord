@@ -146,7 +146,7 @@ def main():
         Otherwise, sends error message and does nothing.
         """
         global server_proc, server_proc_running, feedback_channel_id, latest_server_launch
-        ON_POSIX: bool = 'posix' in builtin_module_names
+        # ON_POSIX: bool = 'posix' in builtin_module_names
         embed: discord.Embed = discord.Embed()
 
         try:
@@ -163,19 +163,22 @@ def main():
             jar_path: str = get_path()
             server_dir: str = os.path.abspath(os.path.dirname(jar_path))
             # declare default arguments for launch, like ignoring fml query for modded
-            args: list[str] = [JavaArgs.Java.value,
-                               JavaArgs.MaxMem.value.format(mem_alloc),
-                               JavaArgs.MinMem.value.format(mem_alloc),
-                               JavaArgs.Jar.value,
-                               JavaArgs.Server.value,
-                               jar_path]
+            args: list[str] = \
+              [JavaArgs.Java.value,
+               JavaArgs.MaxMem.value.format(mem_alloc),
+               JavaArgs.MinMem.value.format(mem_alloc),
+               JavaArgs.Jar.value,
+               JavaArgs.Server.value,
+               jar_path]
             print("Launch args: ", args)
+
             # start a popen subprocess, meaning we are able to manipulate it later on
-            server_proc = subprocess.Popen(args,
-                                           cwd=server_dir,
-                                           stdin=subprocess.PIPE,
-                                           stdout=subprocess.PIPE,
-                                           close_fds=ON_POSIX)
+            server_proc = subprocess.Popen(
+                args,
+                cwd=server_dir,
+                shell=True,
+                stdin=subprocess.PIPE,
+            )
 
             # The channel from which the server was launched will be the channel to receive the feedback
             feedback_channel_id = ctx.channel.id
@@ -230,7 +233,6 @@ def main():
         :param args: arguments for the minecraft command. does not verify if valid, minecraft does so by itself
         """
         global server_proc, server_proc_running
-        embed: discord.Embed = discord.Embed()
 
         try:
             # by this assertion, we check that the process is running before attempting to close it.
@@ -243,6 +245,7 @@ def main():
             server_proc.stdin.flush()
 
         except Exception as e:
+            embed: discord.Embed = discord.Embed()
             try:
                 embed.add_field(name="Error!", value=ErrorMessages[(type(e), "command")])
             except KeyError:
