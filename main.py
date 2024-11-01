@@ -10,7 +10,7 @@ from sys import builtin_module_names
 from time import time
 
 from constants import Messages, ErrorMessages, JavaArgs
-from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config, proc_read
+from assistant_functions import is_valid_ipv4_address, get_ip, get_path, get_mem, write_to_config
 
 
 def main():
@@ -33,7 +33,6 @@ def main():
         :return:
         """
         print(f"{bot.user} Online")
-        server_feedback.start()
         empty_server_timeout.start()
 
     @bot.command(name="setpath")
@@ -253,31 +252,6 @@ def main():
             # rare indented finally - we do not want to send anything if everything goes right.
             finally:
                 await ctx.channel.send(embed=embed)
-
-    @tasks.loop(seconds=.5)
-    async def server_feedback():
-        """
-        Prints server process' stdout in chat. This may include command results, players chatting, achievements, etc.
-        """
-        global server_proc, server_proc_running, feedback_channel_id, latest_server_launch
-        if not server_proc_running:
-            return
-        # If server is running, server_proc is of type subprocess.Popen
-
-        TEN_MINUTES: float = 60 * 10
-        delta_time: float = time() - latest_server_launch
-        if delta_time < TEN_MINUTES:
-            return
-        # We don't want to send anything for the first ten minute as the server is launching to not overload the chat.
-
-        # Checking if readline returned anything:
-        proc_stdout: str = proc_read(server_proc)
-        if not proc_stdout:
-            return
-
-        print(proc_stdout)
-        ctx_channel: discord.ext.commands.context.Context.channel = bot.get_channel(feedback_channel_id)
-        await ctx_channel.send(proc_stdout)
 
     @tasks.loop(minutes=5)
     async def empty_server_timeout():

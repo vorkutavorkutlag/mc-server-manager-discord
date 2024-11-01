@@ -92,37 +92,3 @@ def write_to_config(key: str, value: str) -> None:
         cfg_json[key] = value
     with open(cfg_path, 'w') as cfg:
         json.dump(cfg_json, cfg, indent=6)
-
-
-def proc_read(proc: subprocess.Popen) -> str:
-    """
-     a non-blocking stdout.readline()
-    :param proc: Any subprocess Popen with a stdout attribute.
-    :return: None. Sends message to context channel.
-    >>> proc_read(proc)
-    "Seed: 214890214080412 \n"
-    """
-
-    def enqueue_output(out, queue):
-        try:
-            for line in iter(out.readline, b''):
-                queue.put(line)
-            out.close()
-        # ValueError indicates there is nothing to read from, ie server closed
-        except ValueError:
-            return
-
-    stdout_read_thread = Thread(target=enqueue_output, args=(proc.stdout, _stdout_read_queue))
-    stdout_read_thread.daemon = True  # thread dies with the program
-    stdout_read_thread.start()
-
-    # read line without blocking
-    try:
-        output = _stdout_read_queue.get_nowait()  # q.get(timeout=.1) also works
-    except Empty:
-        return ""
-    else:
-        try:
-            return output.decode().strip() + "\n"
-        except UnicodeDecodeError:
-            return ""

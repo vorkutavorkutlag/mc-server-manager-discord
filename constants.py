@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class JavaArgs(Enum):
-    Java =                       "java"
+    Java =                       "C:\\Program Files\\Java\\jre1.8.0_241\\bin\\java.exe"
     MaxMem =                     "-Xmx{}M"
     MinMem =                     "-Xms{}M"
     Jar =                        "-jar"
