@@ -7,6 +7,7 @@ class JavaArgs(Enum):
     MinMem =                     "-Xms{}M"
     Jar =                        "-jar"
     Server =                     "-server"
+    DFMLConfirm =                "-Dfml.queryResult=confirm"
 
 
 class Messages(Enum):

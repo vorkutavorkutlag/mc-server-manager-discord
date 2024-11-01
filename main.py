@@ -168,6 +168,7 @@ def main():
                JavaArgs.MinMem.value.format(mem_alloc),
                JavaArgs.Jar.value,
                JavaArgs.Server.value,
+               JavaArgs.DFMLConfirm.value,
                jar_path]
             print("Launch args: ", args)
 
